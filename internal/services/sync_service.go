@@ -32,3 +32,17 @@ type SyncRequest struct { // What the client sends to the server when requesting
 type SyncResponse struct { // What the server returns to the client after processing the sync request
 	ServiceTime time.Time `json:"serviceTime"`
 }
+
+type SyncService struct {
+	conflictService *ConflictService
+}
+
+func NewSyncService(conflictService *ConflictService) *SyncService {
+	return &SyncService{conflictService: conflictService}
+}
+
+func (s *SyncService) Sync(request SyncRequest) SyncResponse {
+	return SyncResponse{
+		ServiceTime: time.Now(),
+	}
+}
