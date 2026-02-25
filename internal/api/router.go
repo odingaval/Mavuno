@@ -26,5 +26,19 @@ func NewRouter() *chi.Mux {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// API routes for frontend testing
+	r.Route("/api", func(api chi.Router) {
+		api.Route("/produce", func(p chi.Router) {
+			p.Post("/", ProduceHandler)
+			p.Put("/{id}", ProduceHandler)
+			p.Delete("/{id}", ProduceHandler)
+		})
+		api.Route("/listings", func(l chi.Router) {
+			l.Post("/", ListingHandler)
+			l.Put("/{id}", ListingHandler)
+			l.Delete("/{id}", ListingHandler)
+		})
+	})
+
 	return r
 }
