@@ -10,6 +10,11 @@ async function syncWithServer(syncRequest) {
 
         const data = await response.json();
         console.log("Sync successful:", data);
+
+        await saveItems("produces", data.produces);
+        await saveItems("listings", data.listings);
+
+        console.log("IndexedDB updated with resolved data");
         return data;
     } catch (err) {
         console.error("Error during sync:", err);

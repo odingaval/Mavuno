@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 
 	"mavuno/internal/api"
@@ -10,10 +10,9 @@ import (
 func main() {
 	api.SetupRouter()
 
-	fmt.Println("Server running on http://localhost:8080")
+	fs := http.FileServer(http.Dir("./web"))
+	http.Handle("/", fs)
 
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		panic(err)
-	}
+	log.Println("Server running on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
