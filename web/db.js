@@ -250,14 +250,29 @@ export function saveLearningContent(articles) {
  * }
  */
 
-export function enqueueSyncOp(op) {
+export async function enqueueSyncOp(op) {
   const record = {
     ...op,
     retryCount: 0,
     status: 'pending',
     createdAt: new Date().toISOString(),
   };
-  return tx('syncQueue', 'readwrite', (store) => store.add(record));
+  const res = await tx('syncQueue', 'readwrite', (store) => store.add(record));
+  // Attempt to register a background sync so the browser wakes the SW
+  // to drain the queue when connectivity returns. This is best-effort
+  // and may fail on browsers without Background Sync support.
+  try {
+    if ('serviceWorker' in navigator && 'SyncManager' in window) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && reg.sync && typeof reg.sync.register === 'function') {
+        await reg.sync.register('sync-todos');
+      }
+    }
+  } catch (e) {
+    // ignore — background sync is optional
+    console.warn('Background sync register failed:', e && e.message ? e.message : e);
+  }
+  return res;
 }
 
 export function getPendingSyncOps() {

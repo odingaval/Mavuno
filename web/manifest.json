@@ -11,12 +11,12 @@
     "categories": ["productivity", "agriculture", "utilities"],
     "icons": [
         {
-            "src": "/icons/image192.png",
+            "src": "/home/mightpush/Mavuno/icons/image192.png",
             "sizes": "192x192",
             "type": "image/png"
         },
         {
-            "src": "/icons/image512.png",
+            "src": "/home/mightpush/Mavuno/icons/image512.png",
             "sizes": "512x512",
             "type": "image/png"
         }
