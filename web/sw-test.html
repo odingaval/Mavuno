@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Service Worker Test</title>
+  <style>body{font-family:system-ui,Arial;max-width:800px;margin:2rem}button{margin:.5rem 0;padding:.4rem .8rem}</style>
+</head>
+<body>
+  <h1>Service Worker Test</h1>
+  <p>Use these controls to inspect caches and test fetch/offline behavior.</p>
+
+  <div>
+    <button id="btn-status">Show SW Status</button>
+    <pre id="status"></pre>
+  </div>
+  <div>
+    <pre id="swjs" style="white-space:pre-wrap"></pre>
+  </div>
+
+  <div>
+    <button id="btn-list-caches">List Caches</button>
+    <pre id="caches"></pre>
+  </div>
+
+  <div>
+    <label>Fetch asset path: <input id="asset" value="/styles.css" style="width:250px"></label>
+    <button id="btn-fetch">Fetch Asset</button>
+    <pre id="fetch-result"></pre>
+  </div>
+
+  <div>
+    <p><strong>How to test offline:</strong></p>
+    <ol>
+      <li>Open DevTools → Application → Service Workers and ensure the worker is active (or click "Update on reload").</li>
+      <li>Open DevTools → Network and check "Offline".</li>
+      <li>Click "Fetch Asset" while offline — if the asset was cached it should still return a response.</li>
+    </ol>
+  </div>
+
+<script>
+async function showStatus(){
+  const out = document.getElementById('status');
+  out.textContent = '';
+  if (!('serviceWorker' in navigator)) {
+    out.textContent = 'Service Worker API not available in this browser.';
+    return;
+  }
+  try{
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) {
+      out.textContent = 'No registration found. Load the main app page (index.html) to register.';
+      return;
+    }
+    const s = reg.active || reg.waiting || reg.installing;
+    out.textContent = 'Scope: ' + reg.scope + '\n' + 'State: ' + (s? s.state : 'no active worker') + '\n' + 'Installing: ' + (reg.installing? 'yes':'no') + '\n' + 'Waiting: ' + (reg.waiting? 'yes':'no') + '\n' + 'Active scriptURL: ' + (s? s.scriptURL : 'n/a');
+  }catch(err){ out.textContent = 'Error: '+err }
+}
+
+async function listCaches(){
+  const out = document.getElementById('caches');
+  out.textContent = '';
+  if (!('caches' in self)) {
+    out.textContent = 'Cache API not available.';
+    return;
+  }
+  try{
+    const keys = await caches.keys();
+    if (keys.length === 0) { out.textContent = 'No caches found.'; return; }
+    let txt = '';
+    for (const k of keys){
+      txt += 'Cache: ' + k + '\n';
+      const cache = await caches.open(k);
+      const requests = await cache.keys();
+      if (requests.length === 0) txt += '  (empty)\n';
+      for (const r of requests){ txt += '  ' + r.url.replace(location.origin,'') + '\n'; }
+    }
+    out.textContent = txt;
+  }catch(err){ out.textContent = 'Error: '+err }
+}
+
+async function fetchAsset(){
+  const path = document.getElementById('asset').value;
+  const out = document.getElementById('fetch-result');
+  out.textContent = 'Fetching ' + path + ' ...';
+  try{
+    const resp = await fetch(path, {cache: 'no-store'});
+    out.textContent = 'Response: ' + resp.status + ' ' + resp.statusText + '\n';
+    const text = await resp.text();
+    out.textContent += '\n(Truncated content)\n' + text.slice(0,500);
+  }catch(err){
+    out.textContent = 'Fetch failed: ' + err + '\n\nTip: try toggling Offline in DevTools → Network to see cached response.';
+  }
+}
+
+document.getElementById('btn-status').addEventListener('click', showStatus);
+document.getElementById('btn-list-caches').addEventListener('click', listCaches);
+document.getElementById('btn-fetch').addEventListener('click', fetchAsset);
+
+// Auto-run status when the page loads
+window.addEventListener('load', async () => {
+  const swjsOut = document.getElementById('swjs');
+  swjsOut.textContent = '';
+  if ('serviceWorker' in navigator) {
+    try {
+      swjsOut.textContent = 'Registering /sw.js...';
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      swjsOut.textContent = 'Navigator.register succeeded. scope=' + reg.scope + '\n';
+    } catch (err) {
+      swjsOut.textContent = 'Navigator.register failed: ' + err + '\n';
+    }
+
+    try {
+      const r = await fetch('/sw.js', {cache: 'no-store'});
+      swjsOut.textContent += '/sw.js fetch -> ' + r.status + ' ' + r.statusText + '\n';
+      try {
+        const txt = await r.text();
+        swjsOut.textContent += '\n/sw.js snippet:\n' + txt.slice(0,1000);
+      } catch (e) {
+        swjsOut.textContent += '\n(Unable to read body: ' + e + ')';
+      }
+    } catch (err) {
+      swjsOut.textContent += '/sw.js fetch failed: ' + err + '\n';
+    }
+  } else {
+    swjsOut.textContent = 'Service Worker API not available in this browser.';
+  }
+
+  setTimeout(showStatus, 200);
+});
+</script>
+</body>
+</html>
