@@ -1,15 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-    <title>Mavuno Sync Test</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1410" />
+  <meta name="description"
+    content="Mavuno — A local-first PWA for smallholder farmers to manage produce, listings, and access learning content offline." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Mavuno" />
+
+  <title>🌾 Mavuno — Harvest Without Limits</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="/styles.css" />
+
+  <!-- Preconnect to Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 </head>
+
 <body>
 
-    <h1>Mavuno Sync Test</h1>
+  <!-- ── App Shell ──────────────────────────────────────────────────────── -->
+  <div class="app-shell">
 
-    <button onclick="testSync()">Test Sync</button>
+    <!-- ── Sidebar (desktop) ────────────────────────────────────────────── -->
+    <aside class="sidebar" role="navigation" aria-label="Main navigation">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo__icon" aria-hidden="true">🌾</div>
+        <div>
+          <div class="sidebar-logo__text">Mavuno</div>
+          <div class="sidebar-logo__tagline">Harvest Without Limits</div>
+        </div>
+      </div>
 
-    <script src="sync.js"></script>
+      <nav class="sidebar-nav">
+        <div class="nav-item nav-item--active" data-route="dashboard" role="button" tabindex="0" aria-label="Dashboard">
+          <span class="nav-item__icon" aria-hidden="true">🏠</span>
+          <span class="nav-item__label">Dashboard</span>
+        </div>
+        <div class="nav-item" data-route="produce" role="button" tabindex="0" aria-label="My Produce">
+          <span class="nav-item__icon" aria-hidden="true">🌽</span>
+          <span class="nav-item__label">My Produce</span>
+        </div>
+        <div class="nav-item" data-route="listings" role="button" tabindex="0" aria-label="Market Listings">
+          <span class="nav-item__icon" aria-hidden="true">🛒</span>
+          <span class="nav-item__label">Listings</span>
+        </div>
+        <div class="nav-item" data-route="learning" role="button" tabindex="0" aria-label="Learning Centre">
+          <span class="nav-item__icon" aria-hidden="true">📚</span>
+          <span class="nav-item__label">Learning</span>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <!-- Connectivity status pill -->
+        <div id="conn-status" class="conn-status" role="status" aria-live="polite">
+          <span class="conn-status__dot" id="conn-dot"></span>
+          <span class="conn-status__label" id="conn-label">Online</span>
+          <span id="sync-badge" class="conn-status__badge" aria-label="Pending items offline" style="display:none">0
+            pending</span>
+        </div>
+        <button id="btn-sync" aria-label="Sync data">
+          <span aria-hidden="true">🔄</span> Sync now
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── Main Content Area ─────────────────────────────────────────────── -->
+    <main class="main-content" role="main">
+
+      <!-- Hidden element kept for JS compatibility (offline state is shown in sidebar now) -->
+      <div id="offline-banner" aria-hidden="true" style="display:none"></div>
+
+      <!-- Page content rendered by app.js -->
+      <div id="app-main" aria-live="polite">
+        <!-- Loading skeleton shown before JS initialises -->
+        <div class="empty-state">
+          <div class="empty-state__icon">🌱</div>
+          <p class="empty-state__text">Starting Mavuno…</p>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ── Bottom Navigation (mobile) ───────────────────────────────────── -->
+  <nav class="bottom-nav" role="navigation" aria-label="Mobile navigation">
+    <div class="bottom-nav__items">
+      <div class="bottom-nav-item bottom-nav-item--active" data-route="dashboard" role="button" tabindex="0">
+        <span class="bottom-nav-item__icon" aria-hidden="true">🏠</span>
+        Home
+      </div>
+      <div class="bottom-nav-item" data-route="produce" role="button" tabindex="0">
+        <span class="bottom-nav-item__icon" aria-hidden="true">🌽</span>
+        Produce
+      </div>
+      <div class="bottom-nav-item" data-route="listings" role="button" tabindex="0">
+        <span class="bottom-nav-item__icon" aria-hidden="true">🛒</span>
+        Market
+      </div>
+      <div class="bottom-nav-item" data-route="learning" role="button" tabindex="0">
+        <span class="bottom-nav-item__icon" aria-hidden="true">📚</span>
+        Learn
+      </div>
+      <!-- Connectivity status (mobile, right side) -->
+      <div class="bottom-nav-status" aria-live="polite" role="status">
+        <span class="conn-status__dot" id="conn-dot-mobile"></span>
+        <span class="conn-status__label--sm" id="conn-label-mobile">Online</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Toast Notification ────────────────────────────────────────────── -->
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ── App Script (ES Module) ────────────────────────────────────────── -->
+  <script type="module" src="/app.js"></script>
 
 </body>
+
 </html>
