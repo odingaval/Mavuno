@@ -159,7 +159,7 @@ Frontend:
 ## 1. Clone repository
 
 ```
-git clone https://github.com/your-org/mvuno.git
+git clone https://github.com/your-org/mavuno.git
 cd mavuno
 ```
 
