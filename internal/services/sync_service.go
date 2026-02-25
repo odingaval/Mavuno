@@ -55,9 +55,27 @@ func (s *SyncService) Sync(request SyncRequest) SyncResponse {
 			Name:    localProduce.Name,
 			Quality: localProduce.Quality,
 		}
-		resolved := s.conflictService.ResolveProduceConflict(localProduce, serverProduce)
 
+		resolved := s.conflictService.ResolveProduceConflict(localProduce, serverProduce)
 		resolvedProduces = append(resolvedProduces, resolved)
+	}
+
+	resolvedListings := []Listing{}
+
+	for _, localListing := range request.Listings {
+		serverListing := Listing{
+			BaseModel: BaseModel{
+				ID:        localListing.ID,
+				Version:   1,
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				Deleted:   false,
+			},
+			ProduceID: localListing.ProduceID,
+			Price:     localListing.Price,
+		}
+
+		resolved := s.conflictService.ResolveListingConflict(localListing, serverListing)
+		resolvedListings = append(resolvedListings, resolved)
 	}
 	return SyncResponse{
 		ServiceTime: time.Now(),
