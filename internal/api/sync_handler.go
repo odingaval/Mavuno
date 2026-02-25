@@ -12,9 +12,12 @@ import (
 	"mavuno/internal/services"
 )
 
-// SyncHandler handles batched synchronization requests from the PWA.
-// It contains no business logic; it delegates to SyncService.
-func SyncHandler(w http.ResponseWriter, r *http.Request) {
+// syncHandler handles batched synchronization requests from the PWA.
+type syncHandler struct {
+	svc *services.SyncService
+}
+
+func (h *syncHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -40,16 +43,10 @@ func SyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Instantiate services (in-memory). This can later be wired with a persistent repository.
-	conflicts := services.NewConflictService()
-	produceSvc := services.NewProduceService(conflicts)
-	listingSvc := services.NewListingService(conflicts, produceSvc)
-	syncSvc := services.NewSyncService(produceSvc, listingSvc, conflicts)
-
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	resp, err := syncSvc.Sync(ctx, req)
+	resp, err := h.svc.Sync(ctx, req)
 	if err != nil {
 		http.Error(w, "sync error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -58,3 +55,15 @@ func SyncHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
+
+// LearningHandler serves static learning content for the PWA.
+// In production this could come from a database; here we return seeded content.
+func LearningHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode([]interface{}{}) // frontend falls back to seeded IndexedDB content
+}
+

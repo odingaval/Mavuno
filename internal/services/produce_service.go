@@ -7,11 +7,10 @@ import (
 	"time"
 
 	"mavuno/internal/models"
+	"mavuno/internal/storage"
 )
 
-var (
-	ErrNotFound = errors.New("not found")
-)
+var ErrNotFound = errors.New("not found")
 
 type ProduceService struct {
 	mu   sync.RWMutex
@@ -21,7 +20,18 @@ type ProduceService struct {
 }
 
 func NewProduceService(conflicts *ConflictService) *ProduceService {
-	return &ProduceService{byID: make(map[string]models.Produce), conflicts: conflicts}
+	svc := &ProduceService{byID: make(map[string]models.Produce), conflicts: conflicts}
+
+	// Seed the in-memory store from SQLite on startup
+	if storage.DB != nil {
+		rows, err := storage.GetAllProduce()
+		if err == nil {
+			for _, p := range rows {
+				svc.byID[p.ID] = p
+			}
+		}
+	}
+	return svc
 }
 
 func (s *ProduceService) List() []models.Produce {
@@ -29,7 +39,9 @@ func (s *ProduceService) List() []models.Produce {
 	defer s.mu.RUnlock()
 	out := make([]models.Produce, 0, len(s.byID))
 	for _, p := range s.byID {
-		out = append(out, p)
+		if !p.Deleted {
+			out = append(out, p)
+		}
 	}
 	return out
 }
@@ -38,11 +50,13 @@ func (s *ProduceService) Get(id string) (models.Produce, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	p, ok := s.byID[id]
-	return p, ok
+	if !ok || p.Deleted {
+		return models.Produce{}, false
+	}
+	return p, true
 }
 
-// Create creates a new produce. If p.ID is empty it will be generated.
-// Version starts at 1 and UpdatedAt is set to now.
+// Create creates a new produce record, persisting to SQLite.
 func (s *ProduceService) Create(p models.Produce) models.Produce {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -51,20 +65,25 @@ func (s *ProduceService) Create(p models.Produce) models.Produce {
 		p.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
 	}
 	p.Version = 1
-	now := time.Now().UnixMilli()
+	now := time.Now()
+	p.CreatedAt = now
 	p.UpdatedAt = now
+	p.Deleted = false
 	s.byID[p.ID] = p
+
+	if storage.DB != nil {
+		_ = storage.SaveProduce(p)
+	}
 	return p
 }
 
 // Patch updates an existing produce using partial fields.
-// clientVersion must match stored version.
 func (s *ProduceService) Patch(id string, clientVersion int, patch map[string]any) (models.Produce, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	cur, ok := s.byID[id]
-	if !ok {
+	if !ok || cur.Deleted {
 		return models.Produce{}, ErrNotFound
 	}
 	if s.conflicts != nil {
@@ -73,12 +92,11 @@ func (s *ProduceService) Patch(id string, clientVersion int, patch map[string]an
 		}
 	}
 
-	// Apply patch (best-effort; ignore unknown fields)
 	if v, ok := patch["name"].(string); ok {
-		cur.Name = v
+		cur.ProduceName = v
 	}
 	if v, ok := patch["category"].(string); ok {
-		cur.Category = v
+		cur.Category = models.ProduceCategory(v)
 	}
 	if v, ok := patch["quantity"].(float64); ok {
 		cur.Quantity = v
@@ -87,23 +105,32 @@ func (s *ProduceService) Patch(id string, clientVersion int, patch map[string]an
 		cur.Unit = v
 	}
 	if v, ok := patch["price"].(float64); ok {
-		cur.Price = v
+		cur.PricePerUnit = v
 	}
-	// Deleted handled by Delete()
+	if v, ok := patch["location"].(string); ok {
+		cur.Location = v
+	}
+	if v, ok := patch["notes"].(string); ok {
+		cur.Notes = v
+	}
 
 	cur.Version++
-	cur.UpdatedAt = time.Now().UnixMilli()
+	cur.UpdatedAt = time.Now()
 	s.byID[id] = cur
+
+	if storage.DB != nil {
+		_ = storage.SaveProduce(cur)
+	}
 	return cur, nil
 }
 
-// Delete performs a soft delete.
+// Delete performs a soft delete, persisting to SQLite.
 func (s *ProduceService) Delete(id string, clientVersion int) (models.Produce, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	cur, ok := s.byID[id]
-	if !ok {
+	if !ok || cur.Deleted {
 		return models.Produce{}, ErrNotFound
 	}
 	if s.conflicts != nil {
@@ -112,33 +139,34 @@ func (s *ProduceService) Delete(id string, clientVersion int) (models.Produce, e
 		}
 	}
 
+	cur.Deleted = true
 	cur.Version++
-	cur.UpdatedAt = time.Now().UnixMilli()
-	// no Deleted field in models.Produce; treat quantity=0? Keep record and let sync layer interpret via operation type.
+	cur.UpdatedAt = time.Now()
 	s.byID[id] = cur
+
+	if storage.DB != nil {
+		_ = storage.DeleteProduce(id)
+	}
 	return cur, nil
 }
 
-// UpsertFromSync applies a create/update coming from the sync engine.
-// If the operation is replayed, providing the same desired version is safe.
+// UpsertFromSync applies a create/update from the sync engine, persisting to SQLite.
 func (s *ProduceService) UpsertFromSync(in models.Produce, clientVersion int, partial bool) (models.Produce, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	cur, ok := s.byID[in.ID]
-	if ok {
+	if ok && !cur.Deleted {
 		if s.conflicts != nil {
 			if err := s.conflicts.CheckProduce(in.ID, clientVersion, cur, true); err != nil {
 				return models.Produce{}, err
 			}
 		}
-
-		// partial means only update fields present (non-zero/empty isn't perfect; sync payload should include explicit fields)
 		if !partial {
 			cur = in
 		} else {
-			if in.Name != "" {
-				cur.Name = in.Name
+			if in.ProduceName != "" {
+				cur.ProduceName = in.ProduceName
 			}
 			if in.Category != "" {
 				cur.Category = in.Category
@@ -149,14 +177,24 @@ func (s *ProduceService) UpsertFromSync(in models.Produce, clientVersion int, pa
 			if in.Unit != "" {
 				cur.Unit = in.Unit
 			}
-			if in.Price != 0 {
-				cur.Price = in.Price
+			if in.PricePerUnit != 0 {
+				cur.PricePerUnit = in.PricePerUnit
 			}
+			if in.Location != "" {
+				cur.Location = in.Location
+			}
+			if in.Notes != "" {
+				cur.Notes = in.Notes
+			}
+			cur.Deleted = in.Deleted
 		}
-
 		cur.Version++
-		cur.UpdatedAt = time.Now().UnixMilli()
+		cur.UpdatedAt = time.Now()
 		s.byID[in.ID] = cur
+
+		if storage.DB != nil {
+			_ = storage.SaveProduce(cur)
+		}
 		return cur, nil
 	}
 
@@ -164,8 +202,14 @@ func (s *ProduceService) UpsertFromSync(in models.Produce, clientVersion int, pa
 	if in.ID == "" {
 		in.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
 	}
+	now := time.Now()
 	in.Version = 1
-	in.UpdatedAt = time.Now().UnixMilli()
+	in.CreatedAt = now
+	in.UpdatedAt = now
 	s.byID[in.ID] = in
+
+	if storage.DB != nil {
+		_ = storage.SaveProduce(in)
+	}
 	return in, nil
 }

@@ -21,34 +21,34 @@ const (
 
 // SyncOperation represents a single queued offline write.
 type SyncOperation struct {
-	OperationID  string     `json:"operation_id"`
-	Type         SyncOpType `json:"type"`
-	EntityID     string     `json:"entity_id"`
-	ClientVersion int       `json:"client_version"`
-	Partial      bool       `json:"partial"`
-	ClientTime   *time.Time `json:"client_time,omitempty"`
+	OperationID   string     `json:"operation_id"`
+	Type          SyncOpType `json:"type"`
+	EntityID      string     `json:"entity_id"`
+	ClientVersion int        `json:"client_version"`
+	Partial       bool       `json:"partial"`
+	ClientTime    *time.Time `json:"client_time,omitempty"`
 
-	Produce  *models.Produce `json:"produce,omitempty"`
-	Listing  *models.Listing `json:"listing,omitempty"`
-	Patch    map[string]any  `json:"patch,omitempty"`
+	Produce *models.Produce `json:"produce,omitempty"`
+	Listing *models.Listing `json:"listing,omitempty"`
+	Patch   map[string]any  `json:"patch,omitempty"`
 }
 
 type SyncRequest struct {
-	LastSyncedAt *time.Time       `json:"last_synced_at,omitempty"`
-	Operations   []SyncOperation  `json:"operations"`
+	LastSyncedAt *time.Time      `json:"last_synced_at,omitempty"`
+	Operations   []SyncOperation `json:"operations"`
 }
 
 type OperationResult struct {
-	OperationID string     `json:"operation_id"`
-	Type        SyncOpType `json:"type"`
-	EntityID    string     `json:"entity_id"`
-	Status      string     `json:"status"` // processed | duplicate | conflict | failed
-	Error       string     `json:"error,omitempty"`
-	ServerVersion int      `json:"server_version,omitempty"`
+	OperationID   string     `json:"operation_id"`
+	Type          SyncOpType `json:"type"`
+	EntityID      string     `json:"entity_id"`
+	Status        string     `json:"status"` // processed | duplicate | conflict | failed
+	Error         string     `json:"error,omitempty"`
+	ServerVersion int        `json:"server_version,omitempty"`
 }
 
 type ConflictResult struct {
-	OperationID string        `json:"operation_id"`
+	OperationID string         `json:"operation_id"`
 	Conflict    *ConflictError `json:"conflict"`
 }
 
@@ -79,10 +79,10 @@ type SyncService struct {
 
 func NewSyncService(produces *ProduceService, listings *ListingService, conflicts *ConflictService) *SyncService {
 	return &SyncService{
-		produces: produces,
-		listings: listings,
+		produces:  produces,
+		listings:  listings,
 		conflicts: conflicts,
-		ops:      make(map[string]opRecord),
+		ops:       make(map[string]opRecord),
 	}
 }
 
@@ -132,11 +132,9 @@ func (s *SyncService) Sync(ctx context.Context, req SyncRequest) (SyncResponse, 
 
 	// partial sync: return only records updated after last_synced_at
 	if req.LastSyncedAt != nil {
-		ms := req.LastSyncedAt.UnixMilli()
-		resp.ChangedProduces = filterProducesUpdatedAfter(s.produces.List(), ms)
-		resp.ChangedListings = filterListingsUpdatedAfter(s.listings.List(), ms)
+		resp.ChangedProduces = filterProducesUpdatedAfter(s.produces.List(), *req.LastSyncedAt)
+		resp.ChangedListings = filterListingsUpdatedAfter(s.listings.List(), *req.LastSyncedAt)
 	} else {
-		// if no timestamp provided, return nothing (client can explicitly do full download)
 		resp.ChangedProduces = []models.Produce{}
 		resp.ChangedListings = []models.Listing{}
 	}
@@ -246,24 +244,24 @@ func (s *SyncService) putOp(id string, res OperationResult) {
 	s.ops[id] = opRecord{Result: res}
 }
 
-func filterProducesUpdatedAfter(in []models.Produce, updatedAfterMs int64) []models.Produce {
+func filterProducesUpdatedAfter(in []models.Produce, updatedAfter time.Time) []models.Produce {
 	out := make([]models.Produce, 0)
 	for _, p := range in {
-		if p.UpdatedAt > updatedAfterMs {
+		if p.UpdatedAt.After(updatedAfter) {
 			out = append(out, p)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt < out[j].UpdatedAt })
+	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.Before(out[j].UpdatedAt) })
 	return out
 }
 
-func filterListingsUpdatedAfter(in []models.Listing, updatedAfterMs int64) []models.Listing {
+func filterListingsUpdatedAfter(in []models.Listing, updatedAfter time.Time) []models.Listing {
 	out := make([]models.Listing, 0)
 	for _, l := range in {
-		if l.UpdatedAt > updatedAfterMs {
+		if l.UpdatedAt.After(updatedAfter) {
 			out = append(out, l)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt < out[j].UpdatedAt })
+	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.Before(out[j].UpdatedAt) })
 	return out
 }

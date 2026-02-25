@@ -144,16 +144,22 @@ export function deleteProduce(id) {
 }
 
 export function markProduce(id, syncStatus, serverVersion) {
-  return tx('produce', 'readwrite', (store) => {
-    const req = store.get(id);
-    req.onsuccess = () => {
-      if (req.result) {
-        req.result.syncStatus = syncStatus;
-        if (serverVersion !== undefined) req.result.version = serverVersion;
-        store.put(req.result);
-      }
-    };
-    return req;
+  return openDB().then((db) => {
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('produce', 'readwrite');
+      const store = t.objectStore('produce');
+      const getReq = store.get(id);
+      getReq.onsuccess = () => {
+        if (getReq.result) {
+          const updated = { ...getReq.result, syncStatus };
+          if (serverVersion !== undefined) updated.version = serverVersion;
+          store.put(updated);
+        }
+      };
+      getReq.onerror = () => reject(getReq.error);
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
   });
 }
 

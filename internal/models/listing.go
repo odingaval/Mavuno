@@ -1,13 +1,29 @@
 package models
 
-// Listing represents a market listing (minimal fields for testing)
+type ListingStatus string
+
+const (
+	StatusAvailable ListingStatus = "available"
+	StatusSold      ListingStatus = "sold"
+	StatusCancelled ListingStatus = "cancelled"
+)
+
+// Listing represents a market listing.
 type Listing struct {
-	ID        string  `json:"id"`
-	ProduceID string  `json:"produceId"`
-	Quantity  float64 `json:"quantity"`
-	Price     float64 `json:"price"`
-	Location  string  `json:"location"`
-	Version   int     `json:"version"`
-	UpdatedAt int64   `json:"updated_at"`
-	Deleted   bool    `json:"deleted"`
+	BaseModel
+
+	ProduceID   string        `json:"produceId"`
+	ProduceName string        `json:"produceName"` // denormalised for offline display
+	FarmerID    string        `json:"farmerId"`
+
+	QuantityListed float64       `json:"quantity"`
+	AskingPrice    float64       `json:"price"`
+	Location       string        `json:"location"`
+	Contact        string        `json:"contact"`
+	Status         ListingStatus `json:"status"`
+
+	BuyerName     string `json:"buyerName"`
+	BuyerContact  string `json:"buyerContact"`
+	BuyerLocation string `json:"buyerLocation"`
+	Notes         string `json:"notes"`
 }

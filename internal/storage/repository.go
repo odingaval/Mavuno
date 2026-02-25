@@ -12,10 +12,178 @@ import (
 // HELPER FUNCTIONS
 // ============================================================
 
-// generateID creates a new unique ID for any record.
-// This is called every time we create a new record.
 func generateID() string {
 	return uuid.New().String()
+}
+
+// ============================================================
+// PRODUCE — service-facing helpers
+// ============================================================
+
+// GetAllProduce returns all non-deleted produce rows as model structs.
+func GetAllProduce() ([]models.Produce, error) {
+	rows := []models.Produce{}
+	query := `
+		SELECT id, farmer_id, category, produce_name,
+		       quantity, quantity_sold, quantity_rejected,
+		       quantity_remaining, price_per_unit, total_received,
+		       unit, COALESCE(location,''), notes,
+		       version, created_at, updated_at, deleted
+		FROM produce WHERE deleted = 0 ORDER BY created_at DESC`
+	dbRows, err := DB.Queryx(query)
+	if err != nil {
+		return nil, fmt.Errorf("GetAllProduce: %w", err)
+	}
+	defer dbRows.Close()
+	for dbRows.Next() {
+		var p models.Produce
+		if err := dbRows.Scan(
+			&p.ID, &p.FarmerID, &p.Category, &p.ProduceName,
+			&p.Quantity, &p.QuantitySold, &p.QuantityRejected,
+			&p.QuantityRemaining, &p.PricePerUnit, &p.TotalReceived,
+			&p.Unit, &p.Location, &p.Notes,
+			&p.Version, &p.CreatedAt, &p.UpdatedAt, &p.Deleted,
+		); err != nil {
+			return nil, fmt.Errorf("GetAllProduce scan: %w", err)
+		}
+		rows = append(rows, p)
+	}
+	return rows, nil
+}
+
+// SaveProduce upserts a produce record (INSERT OR REPLACE).
+func SaveProduce(p models.Produce) error {
+	if p.ID == "" {
+		p.ID = generateID()
+	}
+	p.QuantityRemaining = p.Quantity - p.QuantitySold - p.QuantityRejected
+	p.TotalReceived = p.QuantitySold * p.PricePerUnit
+	p.UpdatedAt = time.Now()
+
+	query := `
+		INSERT INTO produce (
+			id, farmer_id, category, produce_name,
+			quantity, quantity_sold, quantity_rejected,
+			quantity_remaining, price_per_unit, total_received,
+			unit, location, notes, version, created_at, updated_at, deleted
+		) VALUES (
+			:id, :farmer_id, :category, :produce_name,
+			:quantity, :quantity_sold, :quantity_rejected,
+			:quantity_remaining, :price_per_unit, :total_received,
+			:unit, :location, :notes, :version, :created_at, :updated_at, :deleted
+		) ON CONFLICT(id) DO UPDATE SET
+			category           = excluded.category,
+			produce_name       = excluded.produce_name,
+			quantity           = excluded.quantity,
+			quantity_sold      = excluded.quantity_sold,
+			quantity_rejected  = excluded.quantity_rejected,
+			quantity_remaining = excluded.quantity_remaining,
+			price_per_unit     = excluded.price_per_unit,
+			total_received     = excluded.total_received,
+			unit               = excluded.unit,
+			location           = excluded.location,
+			notes              = excluded.notes,
+			version            = excluded.version,
+			updated_at         = excluded.updated_at,
+			deleted            = excluded.deleted`
+
+	_, err := DB.NamedExec(query, map[string]interface{}{
+		"id": p.ID, "farmer_id": p.FarmerID, "category": string(p.Category),
+		"produce_name": p.ProduceName, "quantity": p.Quantity,
+		"quantity_sold": p.QuantitySold, "quantity_rejected": p.QuantityRejected,
+		"quantity_remaining": p.QuantityRemaining, "price_per_unit": p.PricePerUnit,
+		"total_received": p.TotalReceived, "unit": p.Unit, "location": p.Location,
+		"notes": p.Notes, "version": p.Version, "created_at": p.CreatedAt,
+		"updated_at": p.UpdatedAt, "deleted": p.Deleted,
+	})
+	return err
+}
+
+// ============================================================
+// LISTINGS — service-facing helpers
+// ============================================================
+
+// GetAllListingRows returns all non-deleted listing rows as model structs.
+func GetAllListingRows() ([]models.Listing, error) {
+	rows := []models.Listing{}
+	query := `
+		SELECT id, produce_id, COALESCE(produce_name,''), farmer_id,
+		       quantity_listed, asking_price, location,
+		       COALESCE(contact,''), status,
+		       COALESCE(buyer_name,''), COALESCE(buyer_contact,''),
+		       COALESCE(buyer_location,''), COALESCE(notes,''),
+		       version, created_at, updated_at, deleted
+		FROM listings WHERE deleted = 0 ORDER BY created_at DESC`
+	dbRows, err := DB.Queryx(query)
+	if err != nil {
+		return nil, fmt.Errorf("GetAllListingRows: %w", err)
+	}
+	defer dbRows.Close()
+	for dbRows.Next() {
+		var l models.Listing
+		var status string
+		if err := dbRows.Scan(
+			&l.ID, &l.ProduceID, &l.ProduceName, &l.FarmerID,
+			&l.QuantityListed, &l.AskingPrice, &l.Location,
+			&l.Contact, &status,
+			&l.BuyerName, &l.BuyerContact, &l.BuyerLocation, &l.Notes,
+			&l.Version, &l.CreatedAt, &l.UpdatedAt, &l.Deleted,
+		); err != nil {
+			return nil, fmt.Errorf("GetAllListingRows scan: %w", err)
+		}
+		l.Status = models.ListingStatus(status)
+		rows = append(rows, l)
+	}
+	return rows, nil
+}
+
+// SaveListing upserts a listing record (INSERT OR REPLACE).
+func SaveListing(l models.Listing) error {
+	if l.ID == "" {
+		l.ID = generateID()
+	}
+	l.UpdatedAt = time.Now()
+	if l.Status == "" {
+		l.Status = models.StatusAvailable
+	}
+
+	query := `
+		INSERT INTO listings (
+			id, produce_id, produce_name, farmer_id,
+			quantity_listed, asking_price, location, contact, status,
+			buyer_name, buyer_contact, buyer_location, notes,
+			version, created_at, updated_at, deleted
+		) VALUES (
+			:id, :produce_id, :produce_name, :farmer_id,
+			:quantity_listed, :asking_price, :location, :contact, :status,
+			:buyer_name, :buyer_contact, :buyer_location, :notes,
+			:version, :created_at, :updated_at, :deleted
+		) ON CONFLICT(id) DO UPDATE SET
+			produce_name    = excluded.produce_name,
+			quantity_listed = excluded.quantity_listed,
+			asking_price    = excluded.asking_price,
+			location        = excluded.location,
+			contact         = excluded.contact,
+			status          = excluded.status,
+			buyer_name      = excluded.buyer_name,
+			buyer_contact   = excluded.buyer_contact,
+			buyer_location  = excluded.buyer_location,
+			notes           = excluded.notes,
+			version         = excluded.version,
+			updated_at      = excluded.updated_at,
+			deleted         = excluded.deleted`
+
+	_, err := DB.NamedExec(query, map[string]interface{}{
+		"id": l.ID, "produce_id": l.ProduceID, "produce_name": l.ProduceName,
+		"farmer_id": l.FarmerID, "quantity_listed": l.QuantityListed,
+		"asking_price": l.AskingPrice, "location": l.Location,
+		"contact": l.Contact, "status": string(l.Status),
+		"buyer_name": l.BuyerName, "buyer_contact": l.BuyerContact,
+		"buyer_location": l.BuyerLocation, "notes": l.Notes,
+		"version": l.Version, "created_at": l.CreatedAt,
+		"updated_at": l.UpdatedAt, "deleted": l.Deleted,
+	})
+	return err
 }
 
 // ============================================================

@@ -2,36 +2,41 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"mavuno/internal/models"
+	"mavuno/internal/services"
 )
 
-// Reuse the in-memory idempotency store used by produce handler.
 var processedListingOps = struct {
 	sync.RWMutex
 	m map[string]bool
 }{m: map[string]bool{}}
 
-func decodeListingBody(r *http.Request, v interface{}) error {
-	// simple JSON decode; listing payloads are not gzipped in this flow
-	decoder := json.NewDecoder(r.Body)
-	return decoder.Decode(v)
+// listingHandler handles REST requests for listings using the singleton service.
+type listingHandler struct {
+	svc *services.ListingService
 }
 
-// ListingHandler handles POST/PUT/DELETE for listings from the frontend.
-func ListingHandler(w http.ResponseWriter, r *http.Request) {
+// Handle routes POST /api/listings, PUT /api/listings/{id}, DELETE /api/listings/{id}.
+func (h *listingHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 	var idInPath string
 	if len(parts) >= 2 {
 		idInPath = parts[len(parts)-1]
+		if idInPath == "listings" {
+			idInPath = ""
+		}
 	}
 
 	var body map[string]interface{}
 	if r.Body != nil {
-		_ = decodeListingBody(r, &body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
 
 	var opID string
@@ -45,29 +50,79 @@ func ListingHandler(w http.ResponseWriter, r *http.Request) {
 		processedListingOps.RUnlock()
 		if seen {
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"status": "already_processed"})
+			jsonOK(w, map[string]string{"status": "already_processed"})
 			return
 		}
 	}
 
 	switch r.Method {
+	case http.MethodGet:
+		if idInPath != "" {
+			l, ok := h.svc.Get(idInPath)
+			if !ok {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			jsonOK(w, l)
+		} else {
+			jsonOK(w, h.svc.List())
+		}
+		return
+
 	case http.MethodPost:
+		l := listingFromBody("", body)
+		created, err := h.svc.Create(l)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "created", "created_at": time.Now()})
+		jsonOK(w, created)
+
 	case http.MethodPut:
 		if idInPath == "" {
 			http.Error(w, "missing id in path", http.StatusBadRequest)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "updated", "id": idInPath, "updated_at": time.Now()})
+		clientVersion := 0
+		if v, ok := body["version"].(float64); ok {
+			clientVersion = int(v)
+		}
+		updated, err := h.svc.UpsertFromSync(listingFromBody(idInPath, body), clientVersion, false)
+		if err != nil {
+			var ce *services.ConflictError
+			if errors.As(err, &ce) {
+				w.WriteHeader(http.StatusConflict)
+				jsonOK(w, ce)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonOK(w, updated)
+
 	case http.MethodDelete:
 		if idInPath == "" {
 			http.Error(w, "missing id in path", http.StatusBadRequest)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "deleted", "id": idInPath})
+		clientVersion := 0
+		if v, ok := body["version"].(float64); ok {
+			clientVersion = int(v)
+		}
+		deleted, err := h.svc.Delete(idInPath, clientVersion)
+		if err != nil {
+			var ce *services.ConflictError
+			if errors.As(err, &ce) {
+				w.WriteHeader(http.StatusConflict)
+				jsonOK(w, ce)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonOK(w, map[string]interface{}{"status": "deleted", "id": deleted.ID})
+
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -79,3 +134,45 @@ func ListingHandler(w http.ResponseWriter, r *http.Request) {
 		processedListingOps.Unlock()
 	}
 }
+
+func listingFromBody(id string, body map[string]interface{}) models.Listing {
+	l := models.Listing{}
+	l.ID = id
+	if v, ok := body["id"].(string); ok && id == "" {
+		l.ID = v
+	}
+	if v, ok := body["produceId"].(string); ok {
+		l.ProduceID = v
+	}
+	if v, ok := body["produceName"].(string); ok {
+		l.ProduceName = v
+	}
+	if v, ok := body["farmerId"].(string); ok {
+		l.FarmerID = v
+	}
+	if v, ok := body["quantity"].(float64); ok {
+		l.QuantityListed = v
+	}
+	if v, ok := body["price"].(float64); ok {
+		l.AskingPrice = v
+	}
+	if v, ok := body["location"].(string); ok {
+		l.Location = v
+	}
+	if v, ok := body["contact"].(string); ok {
+		l.Contact = v
+	}
+	if v, ok := body["status"].(string); ok {
+		l.Status = models.ListingStatus(v)
+	}
+	if v, ok := body["version"].(float64); ok {
+		l.Version = int(v)
+	}
+	if t, ok := body["createdAt"].(string); ok {
+		if parsed, err := time.Parse(time.RFC3339, t); err == nil {
+			l.CreatedAt = parsed
+		}
+	}
+	return l
+}
+

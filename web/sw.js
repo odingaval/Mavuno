@@ -11,7 +11,10 @@ const APP_CACHE = [
   '/styles.css',
   '/app.js',
   '/db.js',
-  '/manifest.json'
+  '/sync.js',
+  '/manifest.json',
+  '/icons/image192.png',
+  '/icons/image512.png',
 ];
 
 // API base used by sync logic in the service worker.
@@ -57,10 +60,33 @@ self.addEventListener('activate', event => {
 // Helper: open IndexedDB from the service worker context.
 function openIDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('mavuno-db');
+    const req = indexedDB.open('mavuno-db', 1);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
-    // no upgrade handling in SW — DB schema is created by the page
+    // If the DB hasn't been created yet by the page, create the stores here too
+    req.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('syncQueue')) {
+        const syncStore = db.createObjectStore('syncQueue', { keyPath: 'id', autoIncrement: true });
+        syncStore.createIndex('status', 'status', { unique: false });
+        syncStore.createIndex('entityType', 'entityType', { unique: false });
+        syncStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('produce')) {
+        const produceStore = db.createObjectStore('produce', { keyPath: 'id' });
+        produceStore.createIndex('syncStatus', 'syncStatus', { unique: false });
+        produceStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('listings')) {
+        const listingStore = db.createObjectStore('listings', { keyPath: 'id' });
+        listingStore.createIndex('produceId', 'produceId', { unique: false });
+        listingStore.createIndex('syncStatus', 'syncStatus', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('learning')) {
+        const learningStore = db.createObjectStore('learning', { keyPath: 'id' });
+        learningStore.createIndex('category', 'category', { unique: false });
+      }
+    };
   });
 }
 

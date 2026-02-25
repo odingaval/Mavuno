@@ -35,7 +35,7 @@ func RunMigrations() error {
 			sql: `
 			CREATE TABLE IF NOT EXISTS produce (
 				id                  TEXT PRIMARY KEY,
-				farmer_id           TEXT NOT NULL,
+				farmer_id           TEXT NOT NULL DEFAULT '',
 				category            TEXT NOT NULL,
 				produce_name        TEXT NOT NULL,
 				quantity            REAL NOT NULL DEFAULT 0,
@@ -45,12 +45,12 @@ func RunMigrations() error {
 				price_per_unit      REAL NOT NULL DEFAULT 0,
 				total_received      REAL NOT NULL DEFAULT 0,
 				unit                TEXT NOT NULL,
-				notes               TEXT,
+				location            TEXT NOT NULL DEFAULT '',
+				notes               TEXT NOT NULL DEFAULT '',
 				version             INTEGER NOT NULL DEFAULT 1,
 				created_at          DATETIME NOT NULL,
 				updated_at          DATETIME NOT NULL,
-				deleted             BOOLEAN NOT NULL DEFAULT 0,
-				FOREIGN KEY (farmer_id) REFERENCES farmers(id)
+				deleted             BOOLEAN NOT NULL DEFAULT 0
 			);`,
 		},
 		{
@@ -58,22 +58,22 @@ func RunMigrations() error {
 			sql: `
 			CREATE TABLE IF NOT EXISTS listings (
 				id                TEXT PRIMARY KEY,
-				produce_id        TEXT NOT NULL,
-				farmer_id         TEXT NOT NULL,
+				produce_id        TEXT NOT NULL DEFAULT '',
+				produce_name      TEXT NOT NULL DEFAULT '',
+				farmer_id         TEXT NOT NULL DEFAULT '',
 				quantity_listed   REAL NOT NULL DEFAULT 0,
 				asking_price      REAL NOT NULL DEFAULT 0,
-				location          TEXT NOT NULL,
+				location          TEXT NOT NULL DEFAULT '',
+				contact           TEXT NOT NULL DEFAULT '',
 				status            TEXT NOT NULL DEFAULT 'available',
-				buyer_name        TEXT,
-				buyer_contact     TEXT,
-				buyer_location    TEXT,
-				notes             TEXT,
+				buyer_name        TEXT NOT NULL DEFAULT '',
+				buyer_contact     TEXT NOT NULL DEFAULT '',
+				buyer_location    TEXT NOT NULL DEFAULT '',
+				notes             TEXT NOT NULL DEFAULT '',
 				version           INTEGER NOT NULL DEFAULT 1,
 				created_at        DATETIME NOT NULL,
 				updated_at        DATETIME NOT NULL,
-				deleted           BOOLEAN NOT NULL DEFAULT 0,
-				FOREIGN KEY (produce_id) REFERENCES produce(id),
-				FOREIGN KEY (farmer_id) REFERENCES farmers(id)
+				deleted           BOOLEAN NOT NULL DEFAULT 0
 			);`,
 		},
 		{
