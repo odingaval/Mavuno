@@ -1,4 +1,4 @@
-package mavuno
+package api
 
 import (
 	"compress/gzip"

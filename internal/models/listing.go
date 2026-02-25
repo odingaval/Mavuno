@@ -8,4 +8,6 @@ type Listing struct {
 	Price     float64 `json:"price"`
 	Location  string  `json:"location"`
 	Version   int     `json:"version"`
+	UpdatedAt int64   `json:"updated_at"`
+	Deleted   bool    `json:"deleted"`
 }
