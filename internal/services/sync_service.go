@@ -42,6 +42,23 @@ func NewSyncService(conflictService *ConflictService) *SyncService {
 }
 
 func (s *SyncService) Sync(request SyncRequest) SyncResponse {
+	resolvedProduces := []Produce{}
+
+	for _, localProduce := range request.Produces {
+		serverProduce := Produce{
+			BaseModel: BaseModel{
+				ID:        localProduce.ID,
+				Version:   1,
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				Deleted:   false,
+			},
+			Name:    localProduce.Name,
+			Quality: localProduce.Quality,
+		}
+		resolved := s.conflictService.ResolveProduceConflict(localProduce, serverProduce)
+
+		resolvedProduces = append(resolvedProduces, resolved)
+	}
 	return SyncResponse{
 		ServiceTime: time.Now(),
 	}
