@@ -1,4 +1,4 @@
-# 🌾 Mvuno
+# 🌾 Mavuno
 ## Harvest Without Limits.
 
 Mavuno is a Local-First Progressive Web Application (PWA) built with Go.
