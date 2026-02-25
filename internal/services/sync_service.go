@@ -31,6 +31,8 @@ type SyncRequest struct { // What the client sends to the server when requesting
 
 type SyncResponse struct { // What the server returns to the client after processing the sync request
 	ServiceTime time.Time `json:"serviceTime"`
+	Produces    []Produce `json:"produces"`
+	Listings    []Listing `json:"listings"`
 }
 
 type SyncService struct {
@@ -79,5 +81,7 @@ func (s *SyncService) Sync(request SyncRequest) SyncResponse {
 	}
 	return SyncResponse{
 		ServiceTime: time.Now(),
+		Produces:    resolvedProduces,
+		Listings:    resolvedListings,
 	}
 }
