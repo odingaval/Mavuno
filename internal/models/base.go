@@ -1,8 +1,12 @@
 package models
 
-// BaseModel supports versioning for sync/conflict resolution
+import "time"
+
+// BaseModel contains common fields shared by all models in the database.
 type BaseModel struct {
-	ID        string `json:"id"`
-	Version   int    `json:"version"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID        string
+	Version   int
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Deleted   bool
 }
