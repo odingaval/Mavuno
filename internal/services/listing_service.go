@@ -1,7 +1,9 @@
 package services
 
 import (
+	"fmt"
 	"sync"
+	"time"
 
 	"mavuno/internal/models"
 )
@@ -60,4 +62,32 @@ func (s *ListingService) Get(id string) (models.Listing, bool) {
 	}
 
 	return l, true
+}
+
+func (s *ListingService) Create(l models.Listing) (models.Listing, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if l.ID == "" {
+		l.ID = fmt.Sprintf("l-%d", time.Now().UnixNano())
+	}
+
+	l.Version = 1
+
+	now := time.Now()
+	l.CreatedAt = now
+	l.UpdatedAt = now
+	l.Deleted = false
+
+	if l.Status == "" {
+		l.Status = models.StatusAvailable
+	}
+
+	s.byID[l.ID] = l
+
+	if storage.DB != nil {
+		_ = storage.SaveListing(l)
+	}
+
+	return l, nil
 }
