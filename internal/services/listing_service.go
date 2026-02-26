@@ -75,3 +75,5 @@ func (s *ListingService) Create(l models.Listing) (models.Listing, error) {
 	}
 	return l, nil
 }
+
+func (s *ListingService) Patch(id string, clientVersion int, patch map[string]any) (models.Listing, error)
