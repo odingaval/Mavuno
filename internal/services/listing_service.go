@@ -28,3 +28,25 @@ func NewListingService(conflicts *ConflictService, produce *ProduceService) *Lis
 	}
 	return svc
 }
+
+func (s *ListingService) List() []models.Listing {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.Listing, 0, len(s.byID))
+	for _, l := range s.byID {
+		if !l.Deleted {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func (s *ListingService) Get(id string) (models.Listing, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	l, ok := s.byID[id]
+	if !ok || l.Deleted {
+		return models.Listing{}, false
+	}
+	return l, true
+}
