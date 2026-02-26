@@ -1,0 +1,27 @@
+{
+    "scope": "/",
+    "id": "/",
+    "name": "Mavuno — Harvest Without Limits",
+    "short_name": "Mavuno",
+    "description": "Local-first PWA for smallholder farmers. Manage produce, create listings, and access learning content — fully offline.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f1410",
+    "theme_color": "#0f1410",
+    "lang": "en-US",
+    "categories": ["productivity", "agriculture", "utilities"],
+    "icons": [
+        {
+            "src": "/icons/image192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/icons/image512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}
