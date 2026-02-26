@@ -34,3 +34,31 @@ func NewProduceService(conflicts *ConflictService) *ProduceService {
 
 	return svc
 }
+
+func (s *ProduceService) List() []models.Produce {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]models.Produce, 0, len(s.byID))
+
+	for _, p := range s.byID {
+		if !p.Deleted {
+			out = append(out, p)
+		}
+	}
+
+	return out
+}
+
+func (s *ProduceService) Get(id string) (models.Produce, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	p, ok := s.byID[id]
+
+	if !ok || p.Deleted {
+		return models.Produce{}, false
+	}
+
+	return p, true
+}
