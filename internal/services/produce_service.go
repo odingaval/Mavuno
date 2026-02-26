@@ -2,7 +2,9 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"sync"
+	"time"
 
 	"mavuno/internal/models"
 )
@@ -61,4 +63,29 @@ func (s *ProduceService) Get(id string) (models.Produce, bool) {
 	}
 
 	return p, true
+}
+
+// Create creates a new produce record, persisting to SQLite.
+func (s *ProduceService) Create(p models.Produce) models.Produce {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if p.ID == "" {
+		p.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
+	}
+
+	p.Version = 1
+
+	now := time.Now()
+	p.CreatedAt = now
+	p.UpdatedAt = now
+	p.Deleted = false
+
+	s.byID[p.ID] = p
+
+	if storage.DB != nil {
+		_ = storage.SaveProduce(p)
+	}
+
+	return p
 }
