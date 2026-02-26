@@ -2,6 +2,8 @@ package services
 
 import (
 	"errors"
+
+	"mavuno/internal/models"
 )
 
 var ErrConflict = errors.New("conflict")
@@ -46,4 +48,42 @@ func (c *ConflictService) CheckVersion(
 	}
 
 	return nil
+}
+
+func (c *ConflictService) CheckProduce(
+	id string,
+	clientVersion int,
+	server models.Produce,
+	exists bool,
+) error {
+	if !exists {
+		return nil
+	}
+
+	return c.CheckVersion(
+		"produce",
+		id,
+		clientVersion,
+		server.Version,
+		server,
+	)
+}
+
+func (c *ConflictService) CheckListing(
+	id string,
+	clientVersion int,
+	server models.Listing,
+	exists bool,
+) error {
+	if !exists {
+		return nil
+	}
+
+	return c.CheckVersion(
+		"listing",
+		id,
+		clientVersion,
+		server.Version,
+		server,
+	)
 }
