@@ -18,3 +18,13 @@ func (e *ConflictError) Error() string { return "conflict" }
 type ConflictService struct{}
 
 func NewConflictService() *ConflictService { return &ConflictService{} }
+
+func (c *ConflictService) CheckVersion(entity, id string, clientVersion, serverVersion int, serverData interface{}) error {
+	if serverVersion == 0 {
+		return nil
+	}
+	if clientVersion != serverVersion {
+		return &ConflictError{Entity: entity, ID: id, ServerVersion: serverVersion, ServerData: serverData}
+	}
+	return nil
+}
