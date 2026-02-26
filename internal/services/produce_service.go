@@ -28,3 +28,10 @@ func (c *ConflictService) CheckVersion(entity, id string, clientVersion, serverV
 	}
 	return nil
 }
+
+func (c *ConflictService) CheckProduce(id string, clientVersion int, server models.Produce, exists bool) error {
+	if !exists {
+		return nil
+	}
+	return c.CheckVersion("produce", id, clientVersion, server.Version, server)
+}
