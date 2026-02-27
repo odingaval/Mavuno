@@ -140,6 +140,25 @@ export function saveProduce(produce) {
 }
 
 export function deleteProduce(id) {
+  return openDB().then((db) => {
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('produce', 'readwrite');
+      const store = t.objectStore('produce');
+      const req = store.get(id);
+      req.onsuccess = () => {
+        if (req.result) {
+          store.put({ ...req.result, deleted: true, syncStatus: 'pending', updatedAt: new Date().toISOString() });
+        }
+      };
+      req.onerror = () => reject(req.error);
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+  });
+}
+
+/** Hard-removes a produce record from IndexedDB after server confirms the delete. */
+export function hardDeleteProduce(id) {
   return tx('produce', 'readwrite', (store) => store.delete(id));
 }
 
@@ -203,6 +222,25 @@ export function saveListing(listing) {
 }
 
 export function deleteListing(id) {
+  return openDB().then((db) => {
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('listings', 'readwrite');
+      const store = t.objectStore('listings');
+      const req = store.get(id);
+      req.onsuccess = () => {
+        if (req.result) {
+          store.put({ ...req.result, deleted: true, syncStatus: 'pending', updatedAt: new Date().toISOString() });
+        }
+      };
+      req.onerror = () => reject(req.error);
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+  });
+}
+
+/** Hard-removes a listing record from IndexedDB after server confirms the delete. */
+export function hardDeleteListing(id) {
   return tx('listings', 'readwrite', (store) => store.delete(id));
 }
 

@@ -21,11 +21,9 @@ type ProduceService struct {
 
 func NewProduceService(conflicts *ConflictService) *ProduceService {
 	svc := &ProduceService{byID: make(map[string]models.Produce), conflicts: conflicts}
-
-	// Seed the in-memory store from SQLite on startup
+	// Seed from SQLite on startup
 	if storage.DB != nil {
-		rows, err := storage.GetAllProduce()
-		if err == nil {
+		if rows, err := storage.GetAllProduce(); err == nil {
 			for _, p := range rows {
 				svc.byID[p.ID] = p
 			}
@@ -56,7 +54,6 @@ func (s *ProduceService) Get(id string) (models.Produce, bool) {
 	return p, true
 }
 
-// Create creates a new produce record, persisting to SQLite.
 func (s *ProduceService) Create(p models.Produce) models.Produce {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -70,14 +67,12 @@ func (s *ProduceService) Create(p models.Produce) models.Produce {
 	p.UpdatedAt = now
 	p.Deleted = false
 	s.byID[p.ID] = p
-
 	if storage.DB != nil {
 		_ = storage.SaveProduce(p)
 	}
 	return p
 }
 
-// Patch updates an existing produce using partial fields.
 func (s *ProduceService) Patch(id string, clientVersion int, patch map[string]any) (models.Produce, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,7 +86,6 @@ func (s *ProduceService) Patch(id string, clientVersion int, patch map[string]an
 			return models.Produce{}, err
 		}
 	}
-
 	if v, ok := patch["name"].(string); ok {
 		cur.ProduceName = v
 	}
@@ -113,18 +107,15 @@ func (s *ProduceService) Patch(id string, clientVersion int, patch map[string]an
 	if v, ok := patch["notes"].(string); ok {
 		cur.Notes = v
 	}
-
 	cur.Version++
 	cur.UpdatedAt = time.Now()
 	s.byID[id] = cur
-
 	if storage.DB != nil {
 		_ = storage.SaveProduce(cur)
 	}
 	return cur, nil
 }
 
-// Delete performs a soft delete, persisting to SQLite.
 func (s *ProduceService) Delete(id string, clientVersion int) (models.Produce, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -138,19 +129,16 @@ func (s *ProduceService) Delete(id string, clientVersion int) (models.Produce, e
 			return models.Produce{}, err
 		}
 	}
-
 	cur.Deleted = true
 	cur.Version++
 	cur.UpdatedAt = time.Now()
 	s.byID[id] = cur
-
 	if storage.DB != nil {
-		_ = storage.DeleteProduce(id)
+		_ = storage.SaveProduce(cur)
 	}
 	return cur, nil
 }
 
-// UpsertFromSync applies a create/update from the sync engine, persisting to SQLite.
 func (s *ProduceService) UpsertFromSync(in models.Produce, clientVersion int, partial bool) (models.Produce, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -191,14 +179,12 @@ func (s *ProduceService) UpsertFromSync(in models.Produce, clientVersion int, pa
 		cur.Version++
 		cur.UpdatedAt = time.Now()
 		s.byID[in.ID] = cur
-
 		if storage.DB != nil {
 			_ = storage.SaveProduce(cur)
 		}
 		return cur, nil
 	}
 
-	// create
 	if in.ID == "" {
 		in.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
 	}
@@ -207,7 +193,6 @@ func (s *ProduceService) UpsertFromSync(in models.Produce, clientVersion int, pa
 	in.CreatedAt = now
 	in.UpdatedAt = now
 	s.byID[in.ID] = in
-
 	if storage.DB != nil {
 		_ = storage.SaveProduce(in)
 	}

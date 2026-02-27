@@ -4,185 +4,183 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"mavuno/internal/models"
+
+	"github.com/google/uuid"
 )
 
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
 
+// generateID creates a new unique ID for any record.
 func generateID() string {
 	return uuid.New().String()
 }
 
 // ============================================================
-// PRODUCE — service-facing helpers
+// SERVICE-FACING HELPERS  (used by ProduceService & ListingService)
 // ============================================================
 
-// GetAllProduce returns all non-deleted produce rows as model structs.
+// GetAllProduce returns every non-deleted produce row from SQLite.
 func GetAllProduce() ([]models.Produce, error) {
-	rows := []models.Produce{}
-	query := `
-		SELECT id, farmer_id, category, produce_name,
-		       quantity, quantity_sold, quantity_rejected,
-		       quantity_remaining, price_per_unit, total_received,
-		       unit, COALESCE(location,''), notes,
-		       version, created_at, updated_at, deleted
-		FROM produce WHERE deleted = 0 ORDER BY created_at DESC`
-	dbRows, err := DB.Queryx(query)
+	rows, err := DB.Queryx(`SELECT * FROM produce WHERE deleted = 0`)
 	if err != nil {
 		return nil, fmt.Errorf("GetAllProduce: %w", err)
 	}
-	defer dbRows.Close()
-	for dbRows.Next() {
-		var p models.Produce
-		if err := dbRows.Scan(
-			&p.ID, &p.FarmerID, &p.Category, &p.ProduceName,
-			&p.Quantity, &p.QuantitySold, &p.QuantityRejected,
-			&p.QuantityRemaining, &p.PricePerUnit, &p.TotalReceived,
-			&p.Unit, &p.Location, &p.Notes,
-			&p.Version, &p.CreatedAt, &p.UpdatedAt, &p.Deleted,
-		); err != nil {
+	defer rows.Close()
+
+	var out []models.Produce
+	for rows.Next() {
+		var row struct {
+			ID                string    `db:"id"`
+			FarmerID          string    `db:"farmer_id"`
+			Category          string    `db:"category"`
+			ProduceName       string    `db:"produce_name"`
+			Quantity          float64   `db:"quantity"`
+			QuantitySold      float64   `db:"quantity_sold"`
+			QuantityRejected  float64   `db:"quantity_rejected"`
+			QuantityRemaining float64   `db:"quantity_remaining"`
+			PricePerUnit      float64   `db:"price_per_unit"`
+			TotalReceived     float64   `db:"total_received"`
+			Unit              string    `db:"unit"`
+			Notes             string    `db:"notes"`
+			Location          string    `db:"location"`
+			Version           int       `db:"version"`
+			CreatedAt         time.Time `db:"created_at"`
+			UpdatedAt         time.Time `db:"updated_at"`
+			Deleted           bool      `db:"deleted"`
+		}
+		if err := rows.StructScan(&row); err != nil {
 			return nil, fmt.Errorf("GetAllProduce scan: %w", err)
 		}
-		rows = append(rows, p)
+		p := models.Produce{
+			BaseModel: models.BaseModel{
+				ID: row.ID, Version: row.Version,
+				CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, Deleted: row.Deleted,
+			},
+			FarmerID: row.FarmerID, Category: models.ProduceCategory(row.Category),
+			ProduceName: row.ProduceName, Quantity: row.Quantity,
+			QuantitySold: row.QuantitySold, QuantityRejected: row.QuantityRejected,
+			QuantityRemaining: row.QuantityRemaining, PricePerUnit: row.PricePerUnit,
+			TotalReceived: row.TotalReceived, Unit: row.Unit,
+			Notes: row.Notes, Location: row.Location,
+		}
+		out = append(out, p)
 	}
-	return rows, nil
+	return out, nil
 }
 
-// SaveProduce upserts a produce record (INSERT OR REPLACE).
+// SaveProduce upserts a produce record into SQLite.
 func SaveProduce(p models.Produce) error {
-	if p.ID == "" {
-		p.ID = generateID()
-	}
-	p.QuantityRemaining = p.Quantity - p.QuantitySold - p.QuantityRejected
-	p.TotalReceived = p.QuantitySold * p.PricePerUnit
-	p.UpdatedAt = time.Now()
-
-	query := `
+	_, err := DB.NamedExec(`
 		INSERT INTO produce (
-			id, farmer_id, category, produce_name,
-			quantity, quantity_sold, quantity_rejected,
-			quantity_remaining, price_per_unit, total_received,
-			unit, location, notes, version, created_at, updated_at, deleted
+			id, farmer_id, category, produce_name, quantity, quantity_sold,
+			quantity_rejected, quantity_remaining, price_per_unit, total_received,
+			unit, notes, location, version, created_at, updated_at, deleted
 		) VALUES (
-			:id, :farmer_id, :category, :produce_name,
-			:quantity, :quantity_sold, :quantity_rejected,
-			:quantity_remaining, :price_per_unit, :total_received,
-			:unit, :location, :notes, :version, :created_at, :updated_at, :deleted
+			:id, :farmer_id, :category, :produce_name, :quantity, :quantity_sold,
+			:quantity_rejected, :quantity_remaining, :price_per_unit, :total_received,
+			:unit, :notes, :location, :version, :created_at, :updated_at, :deleted
 		) ON CONFLICT(id) DO UPDATE SET
-			category           = excluded.category,
-			produce_name       = excluded.produce_name,
-			quantity           = excluded.quantity,
-			quantity_sold      = excluded.quantity_sold,
-			quantity_rejected  = excluded.quantity_rejected,
-			quantity_remaining = excluded.quantity_remaining,
-			price_per_unit     = excluded.price_per_unit,
-			total_received     = excluded.total_received,
-			unit               = excluded.unit,
-			location           = excluded.location,
-			notes              = excluded.notes,
-			version            = excluded.version,
-			updated_at         = excluded.updated_at,
-			deleted            = excluded.deleted`
-
-	_, err := DB.NamedExec(query, map[string]interface{}{
-		"id": p.ID, "farmer_id": p.FarmerID, "category": string(p.Category),
-		"produce_name": p.ProduceName, "quantity": p.Quantity,
-		"quantity_sold": p.QuantitySold, "quantity_rejected": p.QuantityRejected,
-		"quantity_remaining": p.QuantityRemaining, "price_per_unit": p.PricePerUnit,
-		"total_received": p.TotalReceived, "unit": p.Unit, "location": p.Location,
-		"notes": p.Notes, "version": p.Version, "created_at": p.CreatedAt,
-		"updated_at": p.UpdatedAt, "deleted": p.Deleted,
-	})
+			farmer_id=excluded.farmer_id, category=excluded.category,
+			produce_name=excluded.produce_name, quantity=excluded.quantity,
+			quantity_sold=excluded.quantity_sold, quantity_rejected=excluded.quantity_rejected,
+			quantity_remaining=excluded.quantity_remaining, price_per_unit=excluded.price_per_unit,
+			total_received=excluded.total_received, unit=excluded.unit,
+			notes=excluded.notes, location=excluded.location,
+			version=excluded.version, updated_at=excluded.updated_at, deleted=excluded.deleted`,
+		map[string]interface{}{
+			"id": p.ID, "farmer_id": p.FarmerID, "category": string(p.Category),
+			"produce_name": p.ProduceName, "quantity": p.Quantity,
+			"quantity_sold": p.QuantitySold, "quantity_rejected": p.QuantityRejected,
+			"quantity_remaining": p.QuantityRemaining, "price_per_unit": p.PricePerUnit,
+			"total_received": p.TotalReceived, "unit": p.Unit,
+			"notes": p.Notes, "location": p.Location,
+			"version": p.Version, "created_at": p.CreatedAt, "updated_at": p.UpdatedAt,
+			"deleted": p.Deleted,
+		})
 	return err
 }
 
-// ============================================================
-// LISTINGS — service-facing helpers
-// ============================================================
-
-// GetAllListingRows returns all non-deleted listing rows as model structs.
+// GetAllListingRows returns every non-deleted listing row from SQLite.
 func GetAllListingRows() ([]models.Listing, error) {
-	rows := []models.Listing{}
-	query := `
-		SELECT id, produce_id, COALESCE(produce_name,''), farmer_id,
-		       quantity_listed, asking_price, location,
-		       COALESCE(contact,''), status,
-		       COALESCE(buyer_name,''), COALESCE(buyer_contact,''),
-		       COALESCE(buyer_location,''), COALESCE(notes,''),
-		       version, created_at, updated_at, deleted
-		FROM listings WHERE deleted = 0 ORDER BY created_at DESC`
-	dbRows, err := DB.Queryx(query)
+	rows, err := DB.Queryx(`SELECT * FROM listings WHERE deleted = 0`)
 	if err != nil {
 		return nil, fmt.Errorf("GetAllListingRows: %w", err)
 	}
-	defer dbRows.Close()
-	for dbRows.Next() {
-		var l models.Listing
-		var status string
-		if err := dbRows.Scan(
-			&l.ID, &l.ProduceID, &l.ProduceName, &l.FarmerID,
-			&l.QuantityListed, &l.AskingPrice, &l.Location,
-			&l.Contact, &status,
-			&l.BuyerName, &l.BuyerContact, &l.BuyerLocation, &l.Notes,
-			&l.Version, &l.CreatedAt, &l.UpdatedAt, &l.Deleted,
-		); err != nil {
+	defer rows.Close()
+
+	var out []models.Listing
+	for rows.Next() {
+		var row struct {
+			ID             string    `db:"id"`
+			ProduceID      string    `db:"produce_id"`
+			ProduceName    string    `db:"produce_name"`
+			FarmerID       string    `db:"farmer_id"`
+			QuantityListed float64   `db:"quantity_listed"`
+			AskingPrice    float64   `db:"asking_price"`
+			Location       string    `db:"location"`
+			Contact        string    `db:"contact"`
+			Status         string    `db:"status"`
+			BuyerName      string    `db:"buyer_name"`
+			BuyerContact   string    `db:"buyer_contact"`
+			BuyerLocation  string    `db:"buyer_location"`
+			Notes          string    `db:"notes"`
+			Version        int       `db:"version"`
+			CreatedAt      time.Time `db:"created_at"`
+			UpdatedAt      time.Time `db:"updated_at"`
+			Deleted        bool      `db:"deleted"`
+		}
+		if err := rows.StructScan(&row); err != nil {
 			return nil, fmt.Errorf("GetAllListingRows scan: %w", err)
 		}
-		l.Status = models.ListingStatus(status)
-		rows = append(rows, l)
+		l := models.Listing{
+			BaseModel: models.BaseModel{
+				ID: row.ID, Version: row.Version,
+				CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, Deleted: row.Deleted,
+			},
+			ProduceID: row.ProduceID, ProduceName: row.ProduceName,
+			FarmerID: row.FarmerID, QuantityListed: row.QuantityListed,
+			AskingPrice: row.AskingPrice, Location: row.Location,
+			Contact: row.Contact, Status: models.ListingStatus(row.Status),
+			BuyerName: row.BuyerName, BuyerContact: row.BuyerContact,
+			BuyerLocation: row.BuyerLocation, Notes: row.Notes,
+		}
+		out = append(out, l)
 	}
-	return rows, nil
+	return out, nil
 }
 
-// SaveListing upserts a listing record (INSERT OR REPLACE).
+// SaveListing upserts a listing row into SQLite.
 func SaveListing(l models.Listing) error {
-	if l.ID == "" {
-		l.ID = generateID()
-	}
-	l.UpdatedAt = time.Now()
-	if l.Status == "" {
-		l.Status = models.StatusAvailable
-	}
-
-	query := `
+	_, err := DB.NamedExec(`
 		INSERT INTO listings (
-			id, produce_id, produce_name, farmer_id,
-			quantity_listed, asking_price, location, contact, status,
-			buyer_name, buyer_contact, buyer_location, notes,
-			version, created_at, updated_at, deleted
+			id, produce_id, produce_name, farmer_id, quantity_listed, asking_price,
+			location, contact, status, buyer_name, buyer_contact, buyer_location,
+			notes, version, created_at, updated_at, deleted
 		) VALUES (
-			:id, :produce_id, :produce_name, :farmer_id,
-			:quantity_listed, :asking_price, :location, :contact, :status,
-			:buyer_name, :buyer_contact, :buyer_location, :notes,
-			:version, :created_at, :updated_at, :deleted
+			:id, :produce_id, :produce_name, :farmer_id, :quantity_listed, :asking_price,
+			:location, :contact, :status, :buyer_name, :buyer_contact, :buyer_location,
+			:notes, :version, :created_at, :updated_at, :deleted
 		) ON CONFLICT(id) DO UPDATE SET
-			produce_name    = excluded.produce_name,
-			quantity_listed = excluded.quantity_listed,
-			asking_price    = excluded.asking_price,
-			location        = excluded.location,
-			contact         = excluded.contact,
-			status          = excluded.status,
-			buyer_name      = excluded.buyer_name,
-			buyer_contact   = excluded.buyer_contact,
-			buyer_location  = excluded.buyer_location,
-			notes           = excluded.notes,
-			version         = excluded.version,
-			updated_at      = excluded.updated_at,
-			deleted         = excluded.deleted`
-
-	_, err := DB.NamedExec(query, map[string]interface{}{
-		"id": l.ID, "produce_id": l.ProduceID, "produce_name": l.ProduceName,
-		"farmer_id": l.FarmerID, "quantity_listed": l.QuantityListed,
-		"asking_price": l.AskingPrice, "location": l.Location,
-		"contact": l.Contact, "status": string(l.Status),
-		"buyer_name": l.BuyerName, "buyer_contact": l.BuyerContact,
-		"buyer_location": l.BuyerLocation, "notes": l.Notes,
-		"version": l.Version, "created_at": l.CreatedAt,
-		"updated_at": l.UpdatedAt, "deleted": l.Deleted,
-	})
+			produce_id=excluded.produce_id, produce_name=excluded.produce_name,
+			farmer_id=excluded.farmer_id, quantity_listed=excluded.quantity_listed,
+			asking_price=excluded.asking_price, location=excluded.location,
+			contact=excluded.contact, status=excluded.status,
+			buyer_name=excluded.buyer_name, buyer_contact=excluded.buyer_contact,
+			buyer_location=excluded.buyer_location, notes=excluded.notes,
+			version=excluded.version, updated_at=excluded.updated_at, deleted=excluded.deleted`,
+		map[string]interface{}{
+			"id": l.ID, "produce_id": l.ProduceID, "produce_name": l.ProduceName,
+			"farmer_id": l.FarmerID, "quantity_listed": l.QuantityListed,
+			"asking_price": l.AskingPrice, "location": l.Location,
+			"contact": l.Contact, "status": string(l.Status),
+			"buyer_name": l.BuyerName, "buyer_contact": l.BuyerContact,
+			"buyer_location": l.BuyerLocation, "notes": l.Notes,
+			"version": l.Version, "created_at": l.CreatedAt,
+			"updated_at": l.UpdatedAt, "deleted": l.Deleted,
+		})
 	return err
 }
 
@@ -777,13 +775,13 @@ func DeleteListing(id string) error {
 // it will be delivered when the postman (sync engine) comes.
 func AddToSyncQueue(entityType models.SyncEntity, operation models.SyncOperation, payload string) error {
 	item := models.SyncQueue{
-		ID:          generateID(),
-		EntityType:  entityType,
-		Operation:   operation,
-		Payload:     payload,
-		Status:      models.StatusPending,
-		RetryCount:  0,
-		CreatedAt:   time.Now(),
+		ID:         generateID(),
+		EntityType: entityType,
+		Operation:  operation,
+		Payload:    payload,
+		Status:     models.StatusPending,
+		RetryCount: 0,
+		CreatedAt:  time.Now(),
 	}
 
 	query := `
@@ -796,13 +794,13 @@ func AddToSyncQueue(entityType models.SyncEntity, operation models.SyncOperation
 		)`
 
 	_, err := DB.NamedExec(query, map[string]interface{}{
-		"id":           item.ID,
-		"entity_type":  item.EntityType,
-		"operation":    item.Operation,
-		"payload":      item.Payload,
-		"status":       item.Status,
-		"retry_count":  item.RetryCount,
-		"created_at":   item.CreatedAt,
+		"id":          item.ID,
+		"entity_type": item.EntityType,
+		"operation":   item.Operation,
+		"payload":     item.Payload,
+		"status":      item.Status,
+		"retry_count": item.RetryCount,
+		"created_at":  item.CreatedAt,
 	})
 	if err != nil {
 		return fmt.Errorf("error adding to sync queue: %w", err)

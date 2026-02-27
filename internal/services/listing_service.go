@@ -1,7 +1,6 @@
 package services
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -20,11 +19,8 @@ type ListingService struct {
 
 func NewListingService(conflicts *ConflictService, produce *ProduceService) *ListingService {
 	svc := &ListingService{byID: make(map[string]models.Listing), conflicts: conflicts, produce: produce}
-
-	// Seed from SQLite on startup
 	if storage.DB != nil {
-		rows, err := storage.GetAllListingRows()
-		if err == nil {
+		if rows, err := storage.GetAllListingRows(); err == nil {
 			for _, l := range rows {
 				svc.byID[l.ID] = l
 			}
@@ -71,7 +67,6 @@ func (s *ListingService) Create(l models.Listing) (models.Listing, error) {
 		l.Status = models.StatusAvailable
 	}
 	s.byID[l.ID] = l
-
 	if storage.DB != nil {
 		_ = storage.SaveListing(l)
 	}
@@ -91,9 +86,11 @@ func (s *ListingService) Patch(id string, clientVersion int, patch map[string]an
 			return models.Listing{}, err
 		}
 	}
-
 	if v, ok := patch["produceId"].(string); ok {
 		cur.ProduceID = v
+	}
+	if v, ok := patch["produceName"].(string); ok {
+		cur.ProduceName = v
 	}
 	if v, ok := patch["quantity"].(float64); ok {
 		cur.QuantityListed = v
@@ -110,11 +107,9 @@ func (s *ListingService) Patch(id string, clientVersion int, patch map[string]an
 	if v, ok := patch["status"].(string); ok {
 		cur.Status = models.ListingStatus(v)
 	}
-
 	cur.Version++
 	cur.UpdatedAt = time.Now()
 	s.byID[id] = cur
-
 	if storage.DB != nil {
 		_ = storage.SaveListing(cur)
 	}
@@ -138,7 +133,6 @@ func (s *ListingService) Delete(id string, clientVersion int) (models.Listing, e
 	cur.Version++
 	cur.UpdatedAt = time.Now()
 	s.byID[id] = cur
-
 	if storage.DB != nil {
 		_ = storage.SaveListing(cur)
 	}
@@ -185,7 +179,6 @@ func (s *ListingService) UpsertFromSync(in models.Listing, clientVersion int, pa
 		cur.Version++
 		cur.UpdatedAt = time.Now()
 		s.byID[in.ID] = cur
-
 		if storage.DB != nil {
 			_ = storage.SaveListing(cur)
 		}
@@ -203,19 +196,8 @@ func (s *ListingService) UpsertFromSync(in models.Listing, clientVersion int, pa
 		in.Status = models.StatusAvailable
 	}
 	s.byID[in.ID] = in
-
 	if storage.DB != nil {
 		_ = storage.SaveListing(in)
 	}
 	return in, nil
-}
-
-// checkProduceExists is kept for internal validation (unused for now as frontend sends produceName directly)
-func checkProduceExists(produce *ProduceService, produceID string) error {
-	if produceID != "" && produce != nil {
-		if _, ok := produce.Get(produceID); !ok {
-			return errors.New("produce not found")
-		}
-	}
-	return nil
 }

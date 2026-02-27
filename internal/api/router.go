@@ -12,21 +12,15 @@ func NewRouter(produceSvc *services.ProduceService, listingSvc *services.Listing
 	mux := http.NewServeMux()
 
 	// ── API routes (prefixed with /api/) ──────────────────────────────────
-	ph := &produceHandler{svc: produceSvc}
-	mux.HandleFunc("/api/produce", ph.Handle)
-	mux.HandleFunc("/api/produce/", ph.Handle)
-
-	lh := &listingHandler{svc: listingSvc}
-	mux.HandleFunc("/api/listings", lh.Handle)
-	mux.HandleFunc("/api/listings/", lh.Handle)
-
-	sh := &syncHandler{svc: syncSvc}
-	mux.HandleFunc("/api/sync", sh.Handle)
-
-	// ── Learning content endpoint ─────────────────────────────────────────
+	mux.Handle("/api/produce", &produceHandler{svc: produceSvc})
+	mux.Handle("/api/produce/", &produceHandler{svc: produceSvc})
+	mux.Handle("/api/listings", &listingHandler{svc: listingSvc})
+	mux.Handle("/api/listings/", &listingHandler{svc: listingSvc})
+	mux.Handle("/api/sync", &syncHandler{svc: syncSvc})
 	mux.HandleFunc("/api/learning", LearningHandler)
 
 	// ── Static file server — serves the web/ PWA ─────────────────────────
+	// Serves index.html, app.js, db.js, sync.js, styles.css, sw.js, etc.
 	fs := http.FileServer(http.Dir("./web"))
 	mux.Handle("/", fs)
 

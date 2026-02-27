@@ -15,7 +15,6 @@ import (
 )
 
 func main() {
-	// ── Database ───────────────────────────────────────────────────────────
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
 		dbPath = "./mavuno.db"
@@ -29,13 +28,11 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// ── Services (singletons) ──────────────────────────────────────────────
 	conflictSvc := services.NewConflictService()
 	produceSvc := services.NewProduceService(conflictSvc)
 	listingSvc := services.NewListingService(conflictSvc, produceSvc)
 	syncSvc := services.NewSyncService(produceSvc, listingSvc, conflictSvc)
 
-	// ── Router ─────────────────────────────────────────────────────────────
 	router := api.NewRouter(produceSvc, listingSvc, syncSvc)
 
 	srv := &http.Server{
@@ -43,6 +40,7 @@ func main() {
 		Handler: router,
 	}
 
+	// Run server in a goroutine so we can listen for shutdown signals
 	go func() {
 		log.Println("Server starting on http://localhost:8080")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -50,6 +48,7 @@ func main() {
 		}
 	}()
 
+	// Setup channel to listen for interrupt or terminate signals
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit

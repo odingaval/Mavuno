@@ -12,9 +12,9 @@ const (
 type Listing struct {
 	BaseModel
 
-	ProduceID   string        `json:"produceId"`
-	ProduceName string        `json:"produceName"` // denormalised for offline display
-	FarmerID    string        `json:"farmerId"`
+	ProduceID   string `json:"produceId"`
+	ProduceName string `json:"produceName"`
+	FarmerID    string `json:"farmerId"`
 
 	QuantityListed float64       `json:"quantity"`
 	AskingPrice    float64       `json:"price"`

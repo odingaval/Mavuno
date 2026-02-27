@@ -25,6 +25,6 @@ type Produce struct {
 	PricePerUnit      float64         `json:"price"`
 	TotalReceived     float64         `json:"totalReceived"`
 	Unit              string          `json:"unit"`
-	Location          string          `json:"location"`
 	Notes             string          `json:"notes"`
+	Location          string          `json:"location"`
 }

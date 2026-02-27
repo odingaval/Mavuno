@@ -16,6 +16,8 @@ import {
     markProduce,
     getSyncQueueCount,
     saveLearningContent,
+    saveProduce,
+    saveListing,
 } from './db.js';
 
 const API_BASE = '/api';
@@ -57,7 +59,7 @@ export function isSyncing() {
 window.addEventListener('online', () => {
     _online = true;
     emit('online');
-    triggerSync();
+    pullFromServer().then(() => triggerSync());
 });
 
 window.addEventListener('offline', () => {
@@ -121,9 +123,14 @@ async function processSyncOp(op) {
         const response = await apiRequest(method, path, operation !== 'delete' ? payload : null);
 
         if (response.ok) {
-            // Success — remove from queue and mark local record as synced
+            // Success — remove from queue and clean up local record
             await removeSyncOp(op.id);
-            if (entityType === 'produce') {
+            if (operation === 'delete') {
+                // Hard-delete the local soft-deleted record now that server confirmed it
+                const { hardDeleteProduce, hardDeleteListing } = await import('./db.js');
+                if (entityType === 'produce') await hardDeleteProduce(entityId);
+                if (entityType === 'listing') await hardDeleteListing(entityId);
+            } else if (entityType === 'produce') {
                 const serverRecord = await response.json().catch(() => null);
                 await markProduce(entityId, 'synced', serverRecord?.version);
             }
@@ -179,14 +186,13 @@ export async function triggerSync() {
     emit('syncComplete', { remaining });
 }
 
-// ── Periodic Sync (every 30s when online) ────────────────────────────────────
+// ── Periodic Sync (every 15s when online) ────────────────────────────────────
 
 setInterval(() => {
-    if (_online) triggerSync();
-}, 30_000);
+    if (_online) pullFromServer().then(() => triggerSync());
+}, 15_000);
 
 // ── Learning Content Prefetch ─────────────────────────────────────────────────
-// Fetch fresh learning content from server when online and cache in IndexedDB
 
 let _learningFetched = false;
 
@@ -201,6 +207,84 @@ export async function fetchAndCacheLearning() {
             emit('learningCached', { count: articles.length });
         }
     } catch (_) {
-        // Offline or server down — use seeded defaults (handled in db.js)
+        // Offline or server down — use seeded defaults
+    }
+}
+
+// ── Pull from Server (cross-device sync) ─────────────────────────────────────
+
+let _pulling = false;
+
+export async function pullFromServer() {
+    if (!_online || _pulling) return;
+    _pulling = true;
+    let changed = false;
+    try {
+        const produceRes = await fetch(`${API_BASE}/produce`);
+        if (produceRes.ok) {
+            const serverProduce = await produceRes.json();
+            for (const item of serverProduce) {
+                // Only save if server has a newer version than what we have locally
+                const local = await import('./db.js').then(m => m.getProduceById(item.id));
+                // Never restore an item the user locally deleted (pending sync)
+                if (local && local.deleted && local.syncStatus === 'pending') continue;
+                if (!local || (local.syncStatus === 'synced' && (local.version || 0) < (item.version || 1))) {
+                    const record = {
+                        id:         item.id,
+                        name:       item.name        || '',
+                        category:   item.category    || '',
+                        quantity:   item.quantity    || 0,
+                        unit:       item.unit        || '',
+                        price:      item.price       || 0,
+                        location:   item.location    || '',
+                        notes:      item.notes       || '',
+                        version:    item.version     || 1,
+                        deleted:    item.deleted     || false,
+                        createdAt:  item.createdAt   || new Date().toISOString(),
+                        updatedAt:  item.updatedAt   || new Date().toISOString(),
+                        syncStatus: 'synced',
+                    };
+                    await saveProduce(record);
+                    await markProduce(record.id, 'synced', record.version);
+                    changed = true;
+                }
+            }
+        }
+
+        const listingsRes = await fetch(`${API_BASE}/listings`);
+        if (listingsRes.ok) {
+            const serverListings = await listingsRes.json();
+            for (const item of serverListings) {
+                const local = await import('./db.js').then(m => m.getListingById(item.id));
+                // Never restore an item the user locally deleted (pending sync)
+                if (local && local.deleted && local.syncStatus === 'pending') continue;
+                if (!local || (local.syncStatus === 'synced' && (local.version || 0) < (item.version || 1))) {
+                    const record = {
+                        id:          item.id,
+                        produceId:   item.produceId   || '',
+                        produceName: item.produceName || '',
+                        quantity:    item.quantity    || 0,
+                        price:       item.price       || 0,
+                        location:    item.location    || '',
+                        contact:     item.contact     || '',
+                        status:      item.status      || 'available',
+                        version:     item.version     || 1,
+                        deleted:     item.deleted     || false,
+                        createdAt:   item.createdAt   || new Date().toISOString(),
+                        updatedAt:   item.updatedAt   || new Date().toISOString(),
+                        syncStatus:  'synced',
+                    };
+                    await saveListing(record);
+                    changed = true;
+                }
+            }
+        }
+
+        // Only re-render the UI if something actually changed
+        if (changed) emit('pullComplete');
+    } catch (err) {
+        console.warn('Pull from server failed:', err.message);
+    } finally {
+        _pulling = false;
     }
 }

@@ -29,6 +29,7 @@ import {
   isOnline,
   triggerSync,
   fetchAndCacheLearning,
+  pullFromServer,
 } from './sync.js';
 
 // ── App State ─────────────────────────────────────────────────────────────────
@@ -156,11 +157,15 @@ on('syncFailed', ({ op }) => {
 // ── Data Loading ──────────────────────────────────────────────────────────────
 
 async function loadData() {
-  [state.produce, state.listings, state.learning] = await Promise.all([
+  const [allProduce, allListings, allLearning] = await Promise.all([
     getAllProduce(),
     getAllListings(),
     getAllLearning(),
   ]);
+  // Filter out soft-deleted records (pending delete sync)
+  state.produce = allProduce.filter((p) => !p.deleted);
+  state.listings = allListings.filter((l) => !l.deleted);
+  state.learning = allLearning;
   state.produce.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
   state.listings.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
@@ -1037,9 +1042,19 @@ async function init() {
     });
   }
 
-  // Background tasks
+  // Re-render whenever a pull brings in fresh data from another device
+  on('pullComplete', () => loadData().then(renderApp));
+
+  // Background tasks — pull first, then push pending local changes
   fetchAndCacheLearning();
-  triggerSync();
+  if (isOnline()) {
+    pullFromServer().then(() => {
+      loadData().then(renderApp);
+      triggerSync();
+    });
+  } else {
+    triggerSync();
+  }
 }
 
 init().catch(console.error);
